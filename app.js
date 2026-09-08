@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const C = RiskCore, $ = id => document.getElementById(id), key = 'robot-risk-dashboard.v1';
-  let risks, storageBlocked = false, editing = null, matrixFilter = null, timer;
+  let risks, storageBlocked = false, editing = null, matrixFilter = null, timer, editRevision = 0, personal = null;
   const form = $('risk-form');
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n; };
   const payload = () => ({schemaVersion:1, risks});
@@ -75,8 +75,9 @@
       const status = el('td',r.status);
       const actions = el('td'), group = el('div',undefined,'row-actions');
       const edit = el('button','수정'); edit.setAttribute('aria-label',`${r.id} 수정`); edit.onclick = () => openEditor(r);
-      const remove = el('button','삭제','delete'); remove.setAttribute('aria-label',`${r.id} 삭제`); remove.onclick = () => {
-        if(confirm(`${r.id} “${r.title}” 리스크를 삭제하시겠습니까?`)) {risks = risks.filter(x => x.id !== r.id); save(); render(); say('리스크를 삭제했습니다.');}
+      const remove = el('button','삭제','delete'); remove.setAttribute('aria-label',`${r.id} 삭제`); remove.onclick = async () => {
+        const rev = Classroom.revision;
+        if(confirm(`${r.id} “${r.title}” 리스크를 삭제하시겠습니까?`)) {try {const next = risks.filter(x => x.id !== r.id); if(Classroom.active) {await Classroom.save(next,rev);} else {risks=next;save();render();} say('리스크를 삭제했습니다.');} catch(error){say(error.message);}}
       };
       group.append(edit,remove); actions.append(group); tr.append(id,title,p,impact,sc,due,status,actions); $('rows').append(tr);
     });
@@ -87,7 +88,7 @@
     if(shouldRender) render();
   }
   function openEditor(r = null) {
-    editing = r?.id ?? null; form.reset(); $('form-error').textContent = '';
+    editRevision = Classroom.revision; editing = r?.id ?? null; form.reset(); $('form-error').textContent = '';
     $('editor-title').textContent = r ? `${r.id} 리스크 수정` : '리스크 등록';
     form.elements.dueDate.value = C.today();
     if(r) for(const [name,value] of Object.entries(r)) if(form.elements.namedItem(name)) form.elements.namedItem(name).value = value;
@@ -101,13 +102,14 @@
     } catch {$('score-preview').textContent = '확률 0~100을 입력하세요.';}
   }
   form.addEventListener('input',preview);
-  form.addEventListener('submit',e => {
+  form.addEventListener('submit',async e => {
     e.preventDefault();
-    const r = Object.fromEntries(new FormData(form)); r.id = editing || C.nextId(risks);
+    const r = Object.fromEntries(new FormData(form)); r.id = editing || (Classroom.active ? 'R-'+(100000000+crypto.getRandomValues(new Uint32Array(1))[0]%900000000) : C.nextId(risks));
     for(const k of ['probabilityPct','scheduleImpact','costImpact']) r[k] = Number(r[k]);
     try {
+      if(editing && !risks.some(x=>x.id===editing)) throw Error('이 항목이 삭제되었습니다. 새로 등록해 주세요.');
       const next = editing ? risks.map(x => x.id === editing ? r : x) : [...risks,r];
-      risks = C.validate({schemaVersion:1,risks:next}); save(); $('editor').close(); render(); say('리스크를 저장했습니다. 필터가 적용 중이면 목록에서 숨겨질 수 있습니다.');
+      const checked = C.validate({schemaVersion:1,risks:next}); if(Classroom.active) {await Classroom.save(checked,editRevision);} else {risks=checked;save();} $('editor').close(); render(); say('리스크를 저장했습니다. 필터가 적용 중이면 목록에서 숨겨질 수 있습니다.');
     } catch(err) {$('form-error').textContent = err.message;}
   });
   $('add').onclick = () => openEditor();
@@ -121,9 +123,9 @@
     const blob = new Blob([JSON.stringify(payload(),null,2)],{type:'application/json'}), url = URL.createObjectURL(blob), a = el('a');
     a.href = url; a.download = `risk-register-${C.today()}.json`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); say('전체 리스크 JSON 백업을 내려받습니다.');
   };
-  $('import').onclick = () => $('import-file').click();
+  $('import').onclick = () => {if(Classroom.active){say('공동 수업에서는 다른 참가자의 자료 보호를 위해 전체 JSON 복원을 사용할 수 없습니다.');return;} $('import-file').click();};
   $('import-file').addEventListener('change',async e => {
-    const file = e.target.files[0]; if(!file) return;
+    if(Classroom.active){say('공동 수업에서는 전체 복원을 사용할 수 없습니다.');e.target.value='';return;} const file = e.target.files[0]; if(!file) return;
     try {
       if(file.size > 1024*1024) throw Error('JSON 파일은 1MB 이하여야 합니다.');
       const restored = C.validate(JSON.parse(await file.text()));
@@ -134,6 +136,7 @@
     finally {e.target.value = '';}
   });
   render();
+  Classroom.attach({board:'risks',validate(items){return C.validate({schemaVersion:1,risks:items});},enter(){personal=risks;risks=[];$('editor').close();resetFilters();$('storage-status').textContent='공동 수업 · 서버 연결 확인 중';},receive(items){risks=items;render();$('storage-status').textContent='공동 수업 · 연결/저장 상태는 상단에서 확인';},leave(){risks=personal;personal=null;$('editor').close();resetFilters();$('storage-status').textContent='개인 모드 · 기존 브라우저 데이터';}});
   let lastDay = C.today();
   setInterval(() => {const day = C.today(); if(day !== lastDay) {lastDay = day; render();}},30000);
   document.addEventListener('visibilitychange',() => {if(!document.hidden) render();});

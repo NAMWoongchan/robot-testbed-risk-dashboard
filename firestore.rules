@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function teacher() { return signed() && exists(/databases/$(database)/documents/teachers/$(request.auth.uid)); }
+    function member(room) { return signed() && exists(/databases/$(database)/documents/rooms/$(room)/members/$(request.auth.uid)); }
+    function roomOpen(room) { return get(/databases/$(database)/documents/rooms/$(room)).data.open == true; }
+    match /teachers/{uid} {
+      allow get: if signed() && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+    match /rooms/{room} {
+      allow get: if signed();
+      allow list: if false;
+      allow create: if teacher() && room.matches('^[a-f0-9]{32}$')
+        && request.resource.data.keys().hasOnly(['ownerUid','open','createdAt'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.open == true && request.resource.data.createdAt == request.time;
+      allow update: if signed() && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['open'])
+        && request.resource.data.open is bool;
+      allow delete: if false;
+      match /members/{uid} {
+        allow get: if signed() && request.auth.uid == uid;
+        allow create: if signed() && request.auth.uid == uid && roomOpen(room)
+          && request.resource.data.keys().hasOnly(['joinedAt']) && request.resource.data.joinedAt == request.time;
+        allow list, update, delete: if false;
+      }
+      match /boards/{board}/items/{id} {
+        function text(value, max) { return value is string && value.size() > 0 && value.size() <= max && value.matches('(?s).*[^\\s].*'); }
+        function date(value) { return value is string && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
+        function issue(d) {
+          return d.keys().hasAll(['id','title','owner','due','priority','status'])
+            && d.keys().hasOnly(['id','title','owner','due','priority','status'])
+            && d.id == id && text(d.title,200) && text(d.owner,80) && date(d.due)
+            && d.priority in ['높음','보통','낮음'] && d.status in ['접수','진행 중','완료'];
+        }
+        function risk(d) {
+          return d.keys().hasAll(['id','title','owner','dueDate','category','status','probabilityPct','scheduleImpact','costImpact','description','response','source'])
+            && d.keys().hasOnly(['id','title','owner','dueDate','category','status','probabilityPct','scheduleImpact','costImpact','description','response','source'])
+            && d.id == id && id.matches('^R-[0-9]{3,9}$') && text(d.title,100) && text(d.owner,50) && date(d.dueDate)
+            && d.category in ['기술','일정','비용','안전','조달','운영'] && d.status in ['식별','대응 중','모니터링','종료']
+            && d.probabilityPct is number && d.probabilityPct >= 0 && d.probabilityPct <= 100
+            && d.scheduleImpact is int && d.scheduleImpact >= 1 && d.scheduleImpact <= 5
+            && d.costImpact is int && d.costImpact >= 1 && d.costImpact <= 5
+            && d.description is string && d.description.size() <= 1500 && text(d.response,1500) && text(d.source,200);
+        }
+        allow read: if member(room) && board in ['issues','risks'];
+        allow create, update: if member(room) && roomOpen(room)
+          && request.resource.data.keys().hasAll(['data','deleted','version','updatedBy','updatedAt'])
+          && request.resource.data.keys().hasOnly(['data','deleted','version','updatedBy','updatedAt'])
+          && request.resource.data.data is map && request.resource.data.deleted is bool && request.resource.data.version is int
+          && request.resource.data.updatedBy == request.auth.uid && request.resource.data.updatedAt == request.time
+          && ((board == 'issues' && issue(request.resource.data.data)) || (board == 'risks' && risk(request.resource.data.data)))
+          && ((!exists(/databases/$(database)/documents/rooms/$(room)/boards/$(board)/items/$(id)) && request.resource.data.version == 1 && request.resource.data.deleted == false)
+            || (exists(/databases/$(database)/documents/rooms/$(room)/boards/$(board)/items/$(id)) && request.resource.data.version == resource.data.version + 1));
+        allow delete: if false;
+      }
+    }
+  }
+}
