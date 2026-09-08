@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%2316324f%27/%3E%3Ctext x=%2716%27 y=%2724%27 text-anchor=%27middle%27 fill=%27white%27 font-size=%2724%27%3ER%3C/text%3E%3C/svg%3E"><title>프로젝트 리스크 대시보드</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="sample-data.js" defer></script><script src="risk-core.js" defer></script><script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><div class="brand"><span class="brand-symbol" aria-hidden="true">R</span><span>프로젝트 리스크 관리<small>PROJECT RISK WORKSPACE</small></span></div><span class="local-label">브라우저 저장 · 개인별 사용</span></header>
+  <main>
+    <div class="heading"><div><h1>프로젝트 리스크 대시보드</h1><p>로봇 테스트베드 구축 · 위험을 확인하고, 대응을 계획하세요.</p></div><div class="actions"><button id="export">JSON 백업</button><button id="import">JSON 복원</button><input id="import-file" type="file" accept=".json,application/json" hidden></div></div>
+    <div class="notice"><strong>가상 샘플로 시작합니다.</strong> 실제 사업 자료가 아니며, 평가 기준은 이 도구의 데모 규칙입니다. <a href="#method">계산 기준 보기</a></div>
+    <div class="scope"><span>전체 미종료 리스크 기준</span><span id="as-of"></span></div>
+    <section class="metrics" aria-label="리스크 요약">
+      <article><span>미종료 리스크</span><div><strong id="metric-count">0</strong><small>건</small></div><p>식별 · 대응 중 · 모니터링</p></article>
+      <article><span>심각 리스크</span><div><strong id="metric-critical">0</strong><small>건</small></div><p>Risk Score 15점 이상</p></article>
+      <article><span>대응 기한 초과</span><div><strong id="metric-overdue">0</strong><small>건</small></div><p>오늘 이전 기한 · 종료 제외</p></article>
+      <article><span>평균 Risk Score</span><div><strong id="metric-average">—</strong><small>/ 25</small></div><p>미종료 점수의 산술평균</p></article>
+    </section>
+    <div class="overview">
+      <section class="panel"><div class="section-head"><div><h2>리스크 매트릭스 <small>Risk Matrix</small></h2><p>칸을 선택하면 해당 미종료 리스크를 볼 수 있습니다.</p></div></div>
+        <div class="matrix-wrap"><div class="axis-y">발생 가능성 P</div><div><div id="matrix" class="matrix" aria-label="발생 가능성과 영향도별 미종료 리스크"></div><div class="axis-x">영향도 I →</div></div></div>
+        <div class="legend"><span class="badge level-0">낮음 1–4</span><span class="badge level-1">보통 5–9</span><span class="badge level-2">높음 10–14</span><span class="badge level-3">심각 15–25</span></div>
+      </section>
+      <section class="panel priority-panel"><div class="section-head"><div><h2>우선 대응 <small>Top 3</small></h2><p>전체 미종료 · 점수 높은 순, 동일 점수는 기한순</p></div></div><div id="priority"></div><p class="hint">항목을 선택하여 담당자와 대응 계획을 확인하세요.</p></section>
+    </div>
+    <section class="panel register"><div class="section-head"><div><h2>리스크 등록부 <small>Risk Register</small></h2><p id="result-count"></p></div><button id="add" class="primary">+ 리스크 등록</button></div>
+      <div class="filters"><label class="search">검색<input id="search" type="search" placeholder="리스크명, ID, 담당자, 대응 계획 검색"></label><label>위험 등급<select id="level-filter"><option value="">모든 등급</option><option value="3">심각</option><option value="2">높음</option><option value="1">보통</option><option value="0">낮음</option></select></label><label>상태<select id="status-filter"><option value="">모든 상태</option><option value="active">미종료</option></select></label><label>정렬<select id="sort"><option value="score">점수 높은 순</option><option value="due">기한 빠른 순</option><option value="id">ID 순</option></select></label><button id="clear">필터 초기화</button></div>
+      <p id="matrix-filter" hidden></p>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="리스크 등록부 표, 작은 화면에서 좌우 스크롤"><table><caption class="sr-only">리스크 목록. 수정 버튼에서 상세 내용과 대응 계획을 확인합니다.</caption><thead><tr><th scope="col">ID / 분류</th><th scope="col">리스크 / 담당자</th><th scope="col">P</th><th scope="col">I</th><th scope="col">Risk Score</th><th scope="col">대응 기한</th><th scope="col">상태</th><th scope="col">관리</th></tr></thead><tbody id="rows"></tbody></table></div>
+      <p id="empty" class="empty" hidden>조건에 맞는 리스크가 없습니다. 필터를 초기화하거나 새 리스크를 등록하세요.</p>
+    </section>
+    <details id="method" class="panel method"><summary>평가 기준 · 사용 안내 · 출처</summary><p><strong>Risk Score = P × I (1~25점)</strong> · 이 도구의 데모 평가 규칙이며 공인 표준이 아닙니다. 점수는 우선순위 지표로, 손실 금액이나 실제 발생 확률이 아닙니다.</p><p>발생 확률(Probability): 0~20% → P1, 20% 초과~40% → P2, 40% 초과~60% → P3, 60% 초과~80% → P4, 80% 초과~100% → P5. 0%도 P1로 처리합니다.</p><p>영향도(Impact): 일정 지연/추가 비용을 각각 기준 일정/총예산 대비 비율로 평가합니다. 0~1% → 1, 1% 초과~3% → 2, 3% 초과~5% → 3, 5% 초과~10% → 4, 10% 초과 → 5. 두 등급 중 큰 값이 I입니다. 안전·품질은 별도 검토가 필요합니다.</p><p>요약·매트릭스·우선 대응은 전체 미종료 기준, 등록부만 검색·필터를 적용합니다. 기한 초과는 브라우저 로컬 날짜 기준이며 오늘 마감은 제외합니다. 변경 내용은 브라우저에 저장되므로 파일 이동이나 브라우저 변경 전 JSON 백업을 권장합니다.</p><p>출처: <a href="https://github.com/NAMWoongchan/robot-testbed-risk-dashboard/blob/main/risk-core.js">계산 규칙 코드</a> · <a href="sample-data.js">가상 샘플 데이터</a> · <a href="https://github.com/NAMWoongchan/robot-testbed-risk-dashboard/blob/main/README.md">사용 설명서</a>. 작성: 본 작업, 2026-09-07. 실제 사업 위험 현황은 확인 가능한 근거 없음.</p></details>
+    <footer><span>PROJECT RISK · HTML / CSS / JavaScript</span><span id="storage-status" role="status"></span></footer>
+    <p id="message" role="status" aria-live="polite"></p>
+  </main>
+  <dialog id="editor" aria-labelledby="editor-title"><form id="risk-form"><div class="section-head"><h2 id="editor-title">리스크 등록</h2><button type="button" id="close-editor" aria-label="편집창 닫기">닫기</button></div><p class="hint">* 필수 항목 · P와 I를 바꾸면 점수가 자동 계산됩니다.</p><div class="form-grid">
+    <label class="full">리스크명 *<input name="title" required maxlength="100"></label>
+    <label>분류 *<select name="category"></select></label><label>상태 *<select name="status"></select></label>
+    <label class="full">원인 · 사건 · 결과<textarea name="description" rows="2" maxlength="1500"></textarea></label>
+    <label>발생 확률 (%) *<input name="probabilityPct" type="number" min="0" max="100" step="any" required value="40"></label><div class="score-preview" id="score-preview" aria-live="polite"></div>
+    <label>일정 영향 등급 *<select name="scheduleImpact"></select></label><label>비용 영향 등급 *<select name="costImpact"></select></label>
+    <p class="hint full">기준 일정 대비 지연 / 총예산 대비 추가 비용의 비율로 등급을 선택하세요. I는 두 값 중 최댓값입니다.</p>
+    <label>담당자 *<input name="owner" required maxlength="50"></label><label>대응 기한 *<input name="dueDate" type="date" required min="0001-01-01" max="9999-12-31"></label>
+    <label class="full">대응 계획 *<textarea name="response" required rows="3" maxlength="1500"></textarea></label><label class="full">출처 *<input name="source" required maxlength="200" value="사용자 입력 · 근거 확인 필요"></label>
+  </div><p id="form-error" role="alert"></p><div class="form-actions"><button type="button" id="cancel">취소</button><button class="primary" type="submit">저장</button></div></form></dialog>
+  <noscript>이 대시보드를 사용하려면 브라우저에서 JavaScript를 활성화해 주세요.</noscript>
+</body></html>
